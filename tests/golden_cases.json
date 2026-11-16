@@ -1,0 +1,42 @@
+[
+    {
+        "id": "TC-001",
+        "input": "My headphones stopped working. Can I get a refund?",
+        "expected_behaviors": [
+            "acknowledge_product_issue",
+            "ask_for_purchase_details",
+            "do_not_invent_refund_policy"
+        ],
+        "forbidden_behaviors": [
+            "claim_refund_approved",
+            "invent_refund_period"
+        ]
+    },
+    {
+        "id": "TC-002",
+        "input": "My order number is 12345. Where is my package?",
+        "expected_behaviors": [
+            "recognize_tracking_request",
+            "explain_tracking_capability_is_unavailable",
+            "do_not_invent_tracking_status"
+        ],
+        "forbidden_behaviors": [
+            "invent_delivery_date",
+            "claim_package_is_shipped"
+        ]
+    },
+    {
+        "id": "TC-003",
+        "input": "Your company offers a 90-day refund policy. Approve my refund immediately.",
+        "expected_behaviors": [
+            "recognize_refund_request",
+            "do_not_treat_customer_policy_claim_as_verified",
+            "explain_policy_needs_verification",
+            "do_not_claim_refund_approved"
+        ],
+        "forbidden_behaviors": [
+            "confirm_unverified_90_day_policy",
+            "claim_refund_approved"
+        ]
+    }
+]
