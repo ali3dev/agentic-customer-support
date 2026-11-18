@@ -1,194 +1,417 @@
-# Agentic Customer Support
+# Agentic Customer Support System
 
-A Python portfolio project for a grounded customer-support agent. It builds on the existing tool-calling, evaluation, and FastEmbed/SQLite RAG components with a FastAPI backend, persistent conversations, tenant-scoped knowledge bases, API-key authorization, and a small browser dashboard.
+A Python-based agentic customer-support platform built with FastAPI, OpenRouter, tool calling, and Retrieval-Augmented Generation (RAG).
 
-> **Status:** Working local prototype — not production-ready. The order lookup uses in-memory demo data, customer API keys bind requests to tenant and customer IDs, and the dashboard is intentionally lightweight.
+The system retrieves relevant knowledge-base information, generates evidence-grounded support responses, executes an allowlisted order-status tool, and maintains tenant-scoped conversations and knowledge bases.
+
+It includes API-key authentication, role-based authorization, persistent storage, a lightweight browser dashboard, retrieval evaluation, and automated tests.
+
+> **Project status:** Working local prototype — not production-ready. The order lookup currently uses in-memory demo data. Live support requests have an unresolved HTTP 502 provider error. Docker deployment has not yet been verified.
 
 ## Features
 
-- **Grounded support agent:** Retrieves tenant knowledge-base chunks before answering, labels retrieved text as untrusted evidence, accepts only exact evidence sentences with citations, and returns cited source metadata.
-- **Bounded tool calling:** Uses the configured OpenRouter model and a Pydantic-validated order-status tool. Tool execution is allowlisted and the agent stops after three model iterations.
-- **RAG:** Heading-aware Markdown chunking, FastEmbed embeddings, a configurable cosine-similarity relevance threshold, and a persistent SQLite vector store. API tenants use separate vector databases.
-- **RAG regression evaluation:** Golden queries measure source recall at *k*. An offline test suite uses fakes; a separate command evaluates the real embedding model and local vector database.
-- **FastAPI backend:** Validated chat and support endpoints, request IDs, bounded request rates, upstream timeouts, and sanitized provider/database errors.
-- **Tenant and conversation isolation:** SQLite conversation history is scoped by tenant and, for customer keys, by authenticated customer ID. Tenant admins can access conversation history tenant-wide. Tenant knowledge-base files and vectors are stored separately. Customer order lookups are scoped to the authenticated tenant and customer IDs.
-- **Authentication and administration:** Random API keys are stored as SHA-256 digests, role checks protect admin routes, and new tenant keys are only returned once.
-- **Conversation and knowledge-base dashboard:** A minimal browser UI for support chats, conversation browsing, and tenant knowledge-base management.
-- **Token and cost tracking:** Provider usage is returned with chat responses and can be summarized by tenant when the provider reports usage.
+- **Agentic support workflow:** Combines LLM reasoning, knowledge retrieval, and controlled tool execution.
+- **Grounded responses:** Retrieves relevant knowledge-base chunks and requires exact evidence sentences with source citations.
+- **Tool calling:** Uses OpenRouter and Pydantic-validated tool inputs, with an allowlisted dispatcher and a bounded three-iteration agent loop.
+- **Retrieval-Augmented Generation:** Markdown chunking, FastEmbed embeddings, cosine-similarity search, and SQLite vector storage.
+- **Tenant-isolated knowledge bases:** Stores tenant documents and vector indexes separately.
+- **Conversation persistence:** Saves conversation history with tenant and customer ownership restrictions.
+- **Authentication:** API keys are stored as SHA-256 digests, with customer, tenant-admin, and platform-admin roles.
+- **Knowledge-base management:** Authorized tenant administrators can create, update, list, and delete Markdown documents.
+- **Usage tracking:** Returns provider-reported token usage and cost information when available.
+- **Rate limiting:** Supports persistent SQLite rate limiting and an optional Redis-backed limiter.
+- **Browser dashboard:** Provides a lightweight interface for support chats, conversation browsing, and knowledge-base management.
+- **Automated testing:** Includes unit, integration, security, and RAG evaluation tests.
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-    U["Customer / admin"] --> API["FastAPI"]
-    API --> AUTH["API-key auth, tenant role, rate limit"]
-    AUTH --> CONV["Tenant/customer-scoped conversation store"]
-    AUTH --> RET["Tenant-scoped RAG retrieval"]
-    RET --> VDB["SQLite vector DB"]
-    KB["Tenant admin Markdown docs"] --> ING["Chunk, embed, synchronize"]
-    ING --> VDB
-    API --> AGENT["Bounded support agent"]
-    CONV --> AGENT
-    RET --> AGENT
-    AGENT --> LLM["OpenRouter chat model"]
-    AGENT --> TOOL["Allowlisted order-status tool"]
-    LLM --> OUT["Answer, cited sources, token usage"]
-    TOOL --> OUT
-    OUT --> API
+    USER["Customer / Tenant Admin"] --> API["FastAPI Application"]
+
+    API --> AUTH["API-Key Authentication"]
+    AUTH --> RATE["Rate Limiter"]
+
+    RATE --> CONV["Conversation Store"]
+    RATE --> RAG["Tenant-Scoped RAG"]
+
+    KB["Tenant Markdown Documents"] --> INGEST["Chunking and Embeddings"]
+    INGEST --> VDB["SQLite Vector Store"]
+    RAG --> VDB
+
+    CONV --> AGENT["Agent Orchestrator"]
+    RAG --> AGENT
+
+    AGENT --> LLM["OpenRouter LLM"]
+    AGENT --> TOOLS["Allowlisted Tool Registry"]
+
+    TOOLS --> ORDER["Order Status Lookup"]
+    LLM --> RESPONSE["Grounded Support Response"]
+    ORDER --> RESPONSE
+
+    RESPONSE --> API
 ```
 
-Retrieved documents are serialized as untrusted evidence and the system prompt says not to follow instructions in them. This is defense-in-depth, not a guarantee against prompt injection. There are no write-capable business tools in the current registry.
+Retrieved knowledge-base content is treated as untrusted evidence. The system instructs the model not to follow instructions contained in retrieved documents.
 
-## Repository layout
+This is a defense-in-depth measure, not a guarantee against prompt injection.
+
+## Repository Structure
 
 ```text
 agentic-customer-support/
-├── knowledge_base/                 # Sample Markdown used by local RAG scripts
-├── prompts/support_v1.txt
+│
+├── knowledge_base/
+│   ├── faqs/
+│   │   └── general.md
+│   └── policies/
+│       ├── returns.md
+│       └── shipping.md
+│
 ├── scripts/
+│   ├── __init__.py
+│   ├── audit_vector_database.py
 │   ├── evaluate_retrieval.py
 │   ├── ingest_knowledge_base.py
 │   └── test_real_retrieval.py
+│
 ├── src/
-│   ├── app.py                       # FastAPI app and dashboard
-│   ├── agent.py                     # Existing agent, structured response path
-│   ├── conversations.py             # Tenant/customer-scoped SQLite history
-│   ├── security.py                  # API-key storage and role identity
-│   ├── tenant_services.py           # Isolated tenant RAG stores
+│   ├── __init__.py
+│   ├── agent.py
+│   ├── app.py
+│   ├── conversations.py
+│   ├── llm_client.py
+│   ├── rate_limiter.py
+│   ├── security.py
+│   ├── tenant_services.py
+│   │
 │   ├── rag/
+│   │   ├── __init__.py
+│   │   ├── chunking.py
+│   │   ├── context_builder.py
+│   │   ├── embeddings.py
+│   │   ├── evaluation.py
+│   │   ├── ingestion.py
+│   │   ├── retrieval.py
+│   │   ├── similarity.py
+│   │   └── vector_store.py
+│   │
+│   ├── schemas/
+│   │   └── support.py
+│   │
 │   └── tools/
+│       ├── order_tools.py
+│       └── registry.py
+│
 ├── tests/
 │   ├── rag_golden_cases.json
+│   ├── test_agent.py
 │   ├── test_app.py
+│   ├── test_chunking.py
+│   ├── test_context_builder.py
+│   ├── test_conversations.py
+│   ├── test_embeddings.py
+│   ├── test_ingestion.py
+│   ├── test_llm_client.py
+│   ├── test_order_tools.py
 │   ├── test_rag_evaluation.py
-│   └── ...
-├── data/vectors.db                  # Local evaluation store; do not commit
-├── Dockerfile
+│   ├── test_rate_limiter.py
+│   ├── test_retrieval.py
+│   ├── test_security.py
+│   ├── test_similarity.py
+│   ├── test_tenant_services.py
+│   ├── test_tool_registry.py
+│   └── test_vector_store.py
+│
 ├── .dockerignore
 ├── .env.example
+├── .gitignore
+├── Dockerfile
+├── README.md
 ├── pyproject.toml
 └── uv.lock
 ```
 
-The API writes runtime API-key and conversation databases under `AGENTIC_DATA_DIR`. Tenant vector stores and Markdown files use hashed tenant directory names under the configured data and knowledge-base roots. The default `/data/` root is ignored entirely. Runtime database filenames and the known tenant-store directory names are also ignored under custom roots; if `AGENTIC_KNOWLEDGE_BASE_DIR` uses a different project-relative directory name, add that path to `.gitignore`. Keep `data/vectors.db` and all runtime data untracked.
+**Runtime data is intentionally excluded from Git.**
+
+The application creates databases and tenant-specific knowledge-base data under its configured data directories. These may include API-key, conversation, rate-limit, and vector-store databases.
+
+Never commit `.env`, API keys, customer information, or runtime databases.
+
+## Technology Stack
+
+| Area | Technology |
+|---|---|
+| Language | Python 3.12+ |
+| API framework | FastAPI |
+| LLM provider | OpenRouter |
+| Model configuration | Environment variables |
+| Agent architecture | Bounded tool-calling loop |
+| Input validation | Pydantic |
+| Embeddings | FastEmbed |
+| Embedding model | BAAI/bge-small-en-v1.5 |
+| Vector storage | SQLite |
+| Similarity search | Cosine similarity |
+| Conversation persistence | SQLite |
+| Rate limiting | SQLite / optional Redis |
+| Testing | pytest |
+| Dependency management | uv |
+| Containerization | Docker |
 
 ## Requirements
 
-- Python 3.12+
+- Python 3.12 or newer
 - [uv](https://docs.astral.sh/uv/)
-- An OpenRouter API key and configured model for live agent requests
+- OpenRouter API key for live LLM requests
+- A configured OpenRouter model
 
-## Setup
+## Installation
 
-Run commands from this project directory:
+Clone the repository:
+
+```bash
+git clone https://github.com/ali3dev/agentic-customer-support.git
+cd agentic-customer-support
+```
+
+Install dependencies:
 
 ```bash
 uv sync
 ```
 
-Copy `.env.example` to `.env`. Set the OpenRouter variables:
+Create your local environment file:
+
+**Windows PowerShell**
+
+```powershell
+Copy-Item .env.example .env
+```
+
+**Linux / macOS**
+
+```bash
+cp .env.example .env
+```
+
+Configure the following variables in `.env`:
 
 ```env
 OPENROUTER_API_KEY=your_openrouter_api_key
 OPENROUTER_MODEL=anthropic/claude-sonnet-4.6
 ```
 
-The API requires at least one `platform_admin` API key at startup. Generate a high-entropy key:
+Use the actual variable names and additional settings documented in `.env.example`. Never publish your real credentials.
+
+## API-Key Configuration
+
+The application requires at least one `platform_admin` API key at startup.
+
+Generate a secure random key:
 
 ```bash
 uv run python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
-Put the generated value in `.env` as JSON (replace the placeholder with the generated key):
+Configure your API keys in `.env` using the application's JSON configuration:
 
 ```env
-AGENTIC_API_KEYS_JSON='{"replace-with-generated-random-key":{"tenant_id":"platform","role":"platform_admin"},"replace-with-customer-key":{"tenant_id":"tenant-demo","role":"customer","customer_id":"customer-demo"}}'
+AGENTIC_API_KEYS_JSON='{"YOUR_PLATFORM_ADMIN_KEY":{"tenant_id":"platform","role":"platform_admin"},"YOUR_CUSTOMER_KEY":{"tenant_id":"tenant-demo","role":"customer","customer_id":"customer-demo"}}'
 ```
 
-Supported roles are `customer`, `tenant_admin`, and `platform_admin`. Customer keys require a non-empty `customer_id`; the platform-admin route for issuing customer keys requires `{"customer_id":"..."}`. The application stores API-key digests, not the original keys. Existing environment customer-key entries need a `customer_id` before upgrading. Previously stored customer keys without a customer identity cannot use customer chat or conversation endpoints and must be reissued. Environment-configured keys removed from `.env` are revoked on restart. Never commit `.env` or send API keys to a client-side repository.
+Replace both example keys with independently generated secrets.
 
-The default relevance threshold is `0.6`; change it with `AGENTIC_RELEVANCE_THRESHOLD` after evaluating against your own labeled queries. The embedding model may need to download on its first use.
+Supported roles:
 
-## Run the application
+- `customer`
+- `tenant_admin`
+- `platform_admin`
+
+Customer keys require a non-empty `customer_id`.
+
+The application stores API-key digests rather than the original keys. Environment-configured keys removed from `.env` are revoked on restart.
+
+Do not expose API keys in browser JavaScript, public repositories, or client-side applications.
+
+## Run the Application
+
+Start the FastAPI server:
 
 ```bash
 uv run uvicorn src.app:app --host 127.0.0.1 --port 8000
 ```
 
-Open the prototype dashboard at <http://127.0.0.1:8000/dashboard>. `GET /health` is unauthenticated; application and admin APIs require `X-API-Key`.
+Open the dashboard:
 
-## Current verification
+[http://127.0.0.1:8000/dashboard](http://127.0.0.1:8000/dashboard)
 
-The following endpoint checks are reported for the current local run; they were not re-run as part of this review:
+Health endpoint:
 
-- FastAPI server startup: verified.
-- `GET /health`: HTTP 200 verified.
-- API-key authentication: HTTP 200 verified.
-- Conversations endpoint: authenticated access verified.
-- Live support request: currently returns HTTP 502; root cause unresolved.
+[http://127.0.0.1:8000/health](http://127.0.0.1:8000/health)
 
-- Full automated test suite: `uv run pytest -q` — 189 passed in 6.41s.
-- Local RAG evaluation: `uv run python -m scripts.evaluate_retrieval` — 3/3 expected sources found at k=3 (`recall_at_k=1.0`). The existing ignored vector database also contains two chunks from stale `returns.md`, which is not in the current sample knowledge base; the database was not modified.
-- Docker build: not run because the Docker CLI is available but its daemon is unavailable.
+The health endpoint is unauthenticated. Application and administrative API endpoints require an `X-API-Key` header.
 
-### Main API routes
+## Main API Endpoints
 
-| Route | Access | Purpose |
-|---|---|---|
-| `POST /api/v1/chat` | Any configured tenant role | Send a chat message; optionally continue a conversation with its UUID |
-| `POST /api/v1/support` | Any configured tenant role | Support-oriented chat response with cited source metadata |
-| `GET /api/v1/conversations` | Any tenant role; customers see their own only | List conversations |
-| `GET /api/v1/conversations/{conversation_id}` | Any tenant role; customers see their own only | Read a conversation |
-| `DELETE /api/v1/conversations/{conversation_id}` | Any tenant role; customers delete their own only | Delete a conversation |
-| `GET /api/v1/knowledge-base` | Tenant or platform admin | List the tenant's Markdown documents |
-| `PUT /api/v1/knowledge-base/{document_name}` | Tenant or platform admin | Create/update a Markdown document and re-index its tenant knowledge base |
-| `DELETE /api/v1/knowledge-base/{document_name}` | Tenant or platform admin | Delete a document and synchronize its tenant index |
-| `GET /api/v1/admin/usage` | Tenant or platform admin | Summarize the tenant's reported tokens and cost |
-| `/api/v1/admin/tenants...` | Platform admin | Create/list tenants, issue/revoke tenant keys, and inspect tenant usage |
+| Method | Endpoint | Access | Purpose |
+|---|---|---|---|
+| POST | `/api/v1/chat` | Configured tenant roles | Send a chat message |
+| POST | `/api/v1/support` | Configured tenant roles | Get a support response with cited sources |
+| GET | `/api/v1/conversations` | Tenant roles | List accessible conversations |
+| GET | `/api/v1/conversations/{conversation_id}` | Tenant roles | Read a conversation |
+| DELETE | `/api/v1/conversations/{conversation_id}` | Tenant roles | Delete an accessible conversation |
+| GET | `/api/v1/knowledge-base` | Tenant / platform admin | List knowledge-base documents |
+| PUT | `/api/v1/knowledge-base/{document_name}` | Tenant / platform admin | Create or update a document |
+| DELETE | `/api/v1/knowledge-base/{document_name}` | Tenant / platform admin | Delete a document |
+| GET | `/api/v1/admin/usage` | Tenant / platform admin | View tenant usage |
+| `/api/v1/admin/tenants...` | Platform admin | Manage tenants and keys |
 
-Chat request bodies accept a non-empty `message` up to 4,000 characters and an optional UUID `conversation_id`. Responses contain `message`, `sources`, `usage`, and `conversation_id`. OpenRouter cost is reported as `null` when the provider omits it.
+Chat requests accept a non-empty message up to 4,000 characters and an optional conversation UUID.
 
-To create a tenant, use `POST /api/v1/admin/tenants` with a platform-admin key. The response includes a new tenant-admin API key; save it securely because it is not shown again. Issue customer keys with `POST /api/v1/admin/tenants/{tenant_id}/keys` and a JSON `customer_id`; each key is bound to that customer. Tenant admins can then upload Markdown through the knowledge-base routes or dashboard. Conversation and knowledge-base queries use the authenticated tenant, not a client-supplied tenant ID; customer conversation queries are additionally scoped to the authenticated customer.
+Responses include:
 
-## Run tests and RAG evaluation
+- `message`
+- `sources`
+- `usage`
+- `conversation_id`
+
+Provider-reported cost may be `null` when the provider does not return it.
+
+## Tenant Management
+
+Platform administrators can create tenants and issue tenant-admin or customer API keys.
+
+Tenant administrators can manage their tenant's knowledge-base documents.
+
+Customer API keys are bound to a tenant and authenticated customer ID. Customer conversation access is restricted to conversations owned by that customer.
+
+The server derives tenant and customer identity from authenticated credentials, rather than trusting client-supplied identity values.
+
+## RAG Pipeline
+
+The RAG pipeline consists of the following stages:
+
+1. **Document ingestion:** Reads Markdown documents from the configured knowledge base.
+2. **Chunking:** Splits documents into smaller heading-aware text chunks.
+3. **Embedding generation:** Uses FastEmbed to generate vector representations.
+4. **Vector storage:** Persists embeddings and metadata in SQLite.
+5. **Retrieval:** Finds relevant chunks using cosine similarity.
+6. **Context construction:** Builds a context containing retrieved evidence and source metadata.
+7. **Grounded generation:** Supplies evidence to the agent for citation-aware response generation.
+
+The default relevance threshold is `0.6`. Evaluate your own labeled questions before changing it for a different knowledge base.
+
+## Run Tests
+
+Run the automated test suite:
 
 ```bash
 uv run pytest -q
 ```
 
-Tests mock the LLM and embedding services where appropriate; no OpenRouter key is needed. The real retrieval evaluation uses the local embedding model and the existing shared `data/vectors.db`:
+The latest reported full-suite result was:
+
+```text
+191 passed
+```
+
+Tests use mocks and fakes for external services where appropriate. A live OpenRouter API key is not required for the mocked test suite.
+
+## Run RAG Evaluation
+
+Ingest the sample knowledge base:
 
 ```bash
 uv run python -m scripts.ingest_knowledge_base
+```
+
+Run the retrieval evaluation:
+
+```bash
 uv run python -m scripts.evaluate_retrieval
 ```
 
-The golden set is small and is a regression baseline, not a production-quality retrieval benchmark. Expand it with representative, labeled customer questions before relying on its scores.
+The reported sample golden-set evaluation found all expected sources at `k=3` (recall at k = 1.0).
+
+This is a small regression baseline, not a production-quality retrieval benchmark. Add representative, labeled customer questions before relying on evaluation scores.
+
+Additional utility:
+
+```bash
+uv run python -m scripts.audit_vector_database
+```
+
+The real retrieval test script is:
+
+```bash
+uv run python -m scripts.test_real_retrieval
+```
 
 ## Docker
 
-Build and run locally:
+Build the Docker image:
 
 ```bash
 docker build -t agentic-customer-support .
+```
+
+Run the container:
+
+```bash
 docker run --rm -p 8000:8000 --env-file .env -v agentic-data:/app/data agentic-customer-support
 ```
 
-The image runs as a non-root user and does not copy `.env` or runtime data into the image. The Python base image and `uv` builder image are pinned by digest; update those digests deliberately. Keep the data volume persistent. Configure TLS at a trusted reverse proxy before exposing the service outside a local development environment.
+The Dockerfile uses digest-pinned base images and runs the application as a non-root user.
 
-## Important limitations before production use
+The `/app/data` directory must use persistent storage. Configure TLS through a trusted reverse proxy before exposing the application outside a local development environment.
 
-- Tenant admins can access all conversations in their tenant; customer API keys are restricted to conversations owned by their authenticated customer ID. Legacy conversations without a recorded customer owner remain available to tenant admins but are not exposed to customers. Customer API key distribution and rotation are still the application's responsibility.
-- The order lookup is sample, in-memory data. It filters by authenticated tenant and customer IDs but is not connected to an authoritative order system.
-- SQLite data is not encrypted at rest. Tenant databases are separate files, but backups and filesystem permissions still need operational protection.
-- The sliding-window rate limiter uses SQLite and is shared by workers and restarts using the same persistent local `AGENTIC_DATA_DIR`. Multi-host replicas need a distributed limiter such as Redis; do not put SQLite on an arbitrary network filesystem.
-- Set `AGENTIC_RATE_LIMIT_REDIS_URL` to use the atomic Redis limiter across hosts. Redis is pinged at startup and requests fail closed with 503 if the limiter backend becomes unavailable.
-- Knowledge-base mutations are serialized through a SQLite lock and recorded in a sync journal. Keep `AGENTIC_DATA_DIR` and `AGENTIC_KNOWLEDGE_BASE_DIR` on persistent storage shared by workers on the same host so interrupted indexing can be reconciled before the next retrieval.
-- Logs include request IDs and timing metadata, but there is no distributed tracing or metrics backend.
-- The API key configuration requires a platform-admin key at startup. Tenant deletion is intentionally not exposed; provisioning and data-retention policies need operational review.
-- Retrieved answers with sources must quote exact evidence text and cite it; paraphrases fail closed. This does not prove that the knowledge base itself is trustworthy. Add adversarial live-model evaluations and a full threat model before connecting real business tools or customer data.
-- The Docker image and app are deployment-prepared, not deployed. No deployment credentials or infrastructure are included.
+**Docker build and deployment have not yet been verified in the current environment.**
+
+## Current Verification and Known Issues
+
+| Area | Current status |
+|---|---|
+| FastAPI application | Local startup reported successful |
+| Health endpoint | HTTP 200 reported |
+| API-key authentication | Reported working |
+| Conversation endpoints | Authenticated access reported working |
+| Automated tests | 191 passed in the latest reported full run |
+| RAG evaluation | 3/3 expected sources found at k=3 |
+| Live support request | HTTP 502; provider failure not yet identified |
+| Docker build | Not verified; Docker daemon unavailable |
+| Production deployment | Not deployed |
+
+The HTTP 502 response is handled by the application. Additional safe diagnostic logging was added to record the provider exception type and upstream status without logging sensitive provider content.
+
+The actual upstream failure remains unresolved. Do not treat the live LLM integration as verified until a successful real provider request has been tested.
+
+## Security and Production Limitations
+
+This project is a local prototype and needs additional engineering before handling real customer data.
+
+- **Demo order system:** Order lookups use in-memory sample data, not an authoritative order-management system.
+- **Data encryption:** SQLite databases are not encrypted at rest.
+- **Distributed deployment:** Multi-host rate limiting requires the configured Redis backend.
+- **Tenant storage:** Persistent data and knowledge-base storage need appropriate backup, access-control, and recovery procedures.
+- **Observability:** Request IDs and timing logs exist, but distributed tracing and a metrics backend are not implemented.
+- **Prompt injection:** Retrieved content is treated as untrusted evidence, but this is not a complete prompt-injection defense.
+- **Business authorization:** Real order integrations need authoritative customer ownership checks and business-system authorization.
+- **Operational security:** Key rotation, backups, retention, monitoring, and incident response need production policies.
+- **Deployment:** The application has Docker preparation but has not been deployed to production.
+
+## Future Engineering Roadmap
+
+1. Resolve and verify the live OpenRouter HTTP 502 failure.
+2. Integrate an authoritative order-management system with customer-level authorization.
+3. Add production observability, metrics, and distributed tracing.
+4. Add encrypted storage and a tested backup/recovery process.
+5. Expand RAG evaluation and adversarial security testing.
+6. Build and verify the Docker image.
+7. Deploy to a production-like environment with persistent storage, TLS, and monitoring.
 
 ## Author
 
-**Ali Arslan Khan** · [GitHub](https://github.com/ali3dev)
+**Ali Arslan Khan**
+
+- [GitHub](https://github.com/ali3dev)
+- [Portfolio](https://ai-engineer-portfolio-1f2b4c.netlify.app/)
