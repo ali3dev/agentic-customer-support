@@ -16,6 +16,8 @@ def test_dispatch_existing_tool():
     result = dispatch_tool(
         "get_order_status",
         {"order_id": "ORD-1001"},
+        tenant_id="tenant-demo",
+        customer_id="customer-demo",
     )
 
     assert result["success"] is True
@@ -36,6 +38,22 @@ def test_dispatch_invalid_arguments():
     result = dispatch_tool(
         "get_order_status",
         {"order_id": "A"},
+    )
+
+    assert result["success"] is False
+    assert result["error"] == "invalid_arguments"
+
+
+def test_dispatch_rejects_identity_supplied_in_tool_arguments():
+    result = dispatch_tool(
+        "get_order_status",
+        {
+            "order_id": "ORD-1001",
+            "tenant_id": "tenant-demo",
+            "customer_id": "customer-demo",
+        },
+        tenant_id="another-tenant",
+        customer_id="another-customer",
     )
 
     assert result["success"] is False

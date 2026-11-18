@@ -1,27 +1,47 @@
 from src.tools.schemas import GetOrderStatusInput
 
 
-# Temporary in-memory order database
+# Demo orders are keyed by authenticated tenant and customer identities.
 ORDERS = {
-    "ORD-1001": {
+    ("tenant-demo", "customer-demo", "ORD-1001"): {
         "status": "shipped",
         "estimated_delivery": "2026-11-18",
     },
-    "ORD-1002": {
+    ("tenant-demo", "customer-demo", "ORD-1002"): {
         "status": "processing",
         "estimated_delivery": None,
     },
-    "ORD-1003": {
+    ("tenant-demo", "customer-demo", "ORD-1003"): {
         "status": "delivered",
         "estimated_delivery": "2026-11-12",
     },
 }
 
-def get_order_status(order_id: str) -> dict:
+
+def get_order_status(
+    order_id: str,
+    *,
+    tenant_id: str | None,
+    customer_id: str | None,
+) -> dict:
     """Retrieve the current status of a customer order."""
     validated = GetOrderStatusInput(order_id=order_id)
 
-    order = ORDERS.get(validated.order_id)
+    if (
+        not isinstance(tenant_id, str)
+        or not tenant_id.strip()
+        or not isinstance(customer_id, str)
+        or not customer_id.strip()
+    ):
+        return {
+            "success": False,
+            "error": "order_not_found",
+            "message": "No order found with this ID.",
+        }
+
+    order = ORDERS.get(
+        (tenant_id, customer_id, validated.order_id)
+    )
 
     if order is None:
         return {

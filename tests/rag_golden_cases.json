@@ -1,0 +1,23 @@
+[
+    {
+        "id": "RAG-001",
+        "query": "How long can I return an unused product?",
+        "expected_source_paths": [
+            "policies/returns.md"
+        ]
+    },
+    {
+        "id": "RAG-002",
+        "query": "How long does standard shipping take?",
+        "expected_source_paths": [
+            "policies/shipping.md"
+        ]
+    },
+    {
+        "id": "RAG-003",
+        "query": "How do I track an order?",
+        "expected_source_paths": [
+            "faqs/general.md"
+        ]
+    }
+]

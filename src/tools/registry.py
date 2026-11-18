@@ -29,7 +29,13 @@ def get_tool_definitions() -> list[dict]:
     return definitions
 
 
-def dispatch_tool(name: str, arguments: dict) -> dict:
+def dispatch_tool(
+    name: str,
+    arguments: dict,
+    *,
+    tenant_id: str | None = None,
+    customer_id: str | None = None,
+) -> dict:
 
     tool = TOOL_REGISTRY.get(name)
 
@@ -46,7 +52,12 @@ def dispatch_tool(name: str, arguments: dict) -> dict:
         }
 
     try:
-        return tool["function"](**arguments)
+        validated_arguments = tool["input_model"].model_validate(arguments)
+        return tool["function"](
+            **validated_arguments.model_dump(),
+            tenant_id=tenant_id,
+            customer_id=customer_id,
+        )
 
     except ValidationError as exc:
         return {

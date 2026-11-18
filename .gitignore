@@ -6,6 +6,14 @@ venv/
 .env
 .env.*
 !.env.example
+secrets/
+**/.secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+*.secret
+*.secret.*
 
 # Python generated files
 __pycache__/
@@ -18,6 +26,37 @@ build/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Runtime API and tenant data
+/data/
+# Runtime stores can also be created beneath a custom AGENTIC_DATA_DIR.
+**/api_keys.db*
+**/conversations.db*
+**/rate_limits.db*
+**/knowledge_base_locks.db*
+**/knowledge_base_sync.db*
+**/tenant_vectors/
+**/tenant_knowledge_bases/
+# Add custom project-relative AGENTIC_DATA_DIR or AGENTIC_KNOWLEDGE_BASE_DIR paths here.
+data/api_keys.db*
+data/conversations.db*
+data/rate_limits.db*
+data/knowledge_base_locks.db*
+data/knowledge_base_sync.db*
+data/tenant_vectors/
+data/tenant_knowledge_bases/
+# SQLite databases and their journal/WAL sidecar files.
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+
+# Local audit/review artifacts
+project_audit.txt
+project_code_review.txt
+project_structure.txt
 
 # Editors and operating system
 .vscode/

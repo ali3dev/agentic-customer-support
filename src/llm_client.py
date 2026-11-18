@@ -7,6 +7,8 @@ from openrouter import OpenRouter
 
 load_dotenv()
 
+DEFAULT_LLM_TIMEOUT_MS = 30_000
+
 
 def create_chat_completion(
     messages: list[dict],
@@ -28,14 +30,18 @@ def create_chat_completion(
         "messages": messages,
         "stream": False,
         "temperature": 0.2,
-        "max_completion_tokens": 128
+        "max_completion_tokens": 128,
+        "timeout_ms": DEFAULT_LLM_TIMEOUT_MS,
     }
 
     if tools:
         request["tools"] = tools
         request["tool_choice"] = "auto"
 
-    with OpenRouter(api_key=api_key) as client:
+    with OpenRouter(
+        api_key=api_key,
+        timeout_ms=DEFAULT_LLM_TIMEOUT_MS,
+    ) as client:
         response = client.chat.send(**request)
 
     return response
